@@ -56,6 +56,16 @@ def test_upgrade_with_newest_already_installed():
     assert 'already up-to-date' in result.stdout
 
 
+def _find_package_version(env, package):
+    import sys, re; major, minor = sys.version_info[:2]
+    pattern = "%s-*-py%s.%s.egg-info" % (package, major, minor)
+    package_info = (env.root_path / env.site_packages).glob(pattern)
+    assert len(package_info) == 1, "Unexpected number of files match %s: %s" % (
+        pattern, package_info)
+    package_info = package_info[0].lstrip((env.root_path / env.site_packages))
+    version = re.findall("%s-(.*)-py%s.%s.egg-info" % (package, major, minor), package_info)[0]
+    return version
+
 def test_upgrade_without_unneeded_recursive_upgrades():
     """
     When upgrading a single package, that package's own dependencies should not be
@@ -67,9 +77,11 @@ def test_upgrade_without_unneeded_recursive_upgrades():
     to_install = abspath(join(here, 'packages', 'FSPkgUsesInitools'))
     result = run_pip('install', to_install)
 
+    assert _find_package_version(env, "INITools") == "0.2"
+
     result = run_pip('install', '--upgrade', to_install)
 
-    assert env.site_packages/ 'initools'/'__init__.py' not in result.files_updated, 'pip install --upgrade upgraded recursive dependency INITools when it should not have'
+    assert _find_package_version(env, "INITools") == "0.2", 'pip install --upgrade upgraded recursive dependency INITools when it should not have'
 
 
 def test_upgrade_with_needed_recursive_upgrades():
@@ -83,9 +95,11 @@ def test_upgrade_with_needed_recursive_upgrades():
     result = run_pip('install', to_install)
     run_pip('install', 'INITools==0.2')
 
+    assert _find_package_version(env, "INITools") == "0.2"
+
     result = run_pip('install', '--upgrade', to_install)
 
-    assert env.site_packages/ 'initools'/'configparser.py' in result.files_created, 'pip install --upgrade failed to upgrade recursive dependency INITools when it should have'
+    assert _find_package_version(env, "INITools") != "0.2", 'pip install --upgrade failed to upgrade recursive dependency INITools when it should have'
 
 
 def test_upgrade_with_unneeded_recursive_upgrades_explicitly_requested():
@@ -100,9 +114,11 @@ def test_upgrade_with_unneeded_recursive_upgrades_explicitly_requested():
     to_install = abspath(join(here, 'packages', 'FSPkgUsesInitools'))
     result = run_pip('install', to_install)
 
+    assert _find_package_version(env, "INITools") == "0.2"
+
     result = run_pip('install', '--upgrade-recursive', to_install)
 
-    assert env.site_packages/ 'initools'/'__init__.py' in result.files_updated, 'pip install --upgrade failed to upgrade recursive dependency INITools when it was asked to'
+    assert _find_package_version(env, "INITools") != "0.2", 'pip install --upgrade failed to upgrade recursive dependency INITools when it was asked to'
 
 
 def test_upgrade_reqs_file_without_unneeded_recursive_upgrades():
@@ -118,6 +134,9 @@ def test_upgrade_reqs_file_without_unneeded_recursive_upgrades():
     to_install = abspath(join(here, 'packages', 'FSPkgUsesInitools'))
     result = run_pip('install', to_install)
 
+    assert _find_package_version(env, "INITools") == "0.2"
+    assert _find_package_version(env, "PyLogo") == "0.1"
+
     write_file('test-req.txt', textwrap.dedent("""\
         %(FSPkgUsesInitools)s
         PyLogo
@@ -125,8 +144,8 @@ def test_upgrade_reqs_file_without_unneeded_recursive_upgrades():
 
     result = run_pip('install', '--upgrade', '-r', env.scratch_path/ 'test-req.txt')
 
-    assert env.site_packages/ 'initools'/'__init__.py' not in result.files_updated, 'pip install --upgrade upgraded recursive dependency INITools when it should not have'
-    assert env.site_packages/ 'pylogo'/'__init__.py' in result.files_updated, 'pip install --upgrade failed to upgrade explicit dependency PyLogo when it should have'
+    assert _find_package_version(env, "INITools") == "0.2", 'pip install --upgrade upgraded recursive dependency INITools when it should not have'
+    assert _find_package_version(env, "PyLogo") != "0.1", 'pip install --upgrade failed to upgrade explicit dependency PyLogo when it should have'
 
 
 def test_upgrade_force_reinstall_newest():
@@ -285,4 +304,5 @@ def test_upgrade_vcs_req_with_dist_found():
     run_pip("install", req)
     result = run_pip("install", "-U", req)
     assert not "pypi.python.org" in result.stdout, result.stdout
+
 
